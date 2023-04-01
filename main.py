@@ -34,7 +34,7 @@ def cli():
     """The base command for YouTube Music library management."""
 
 
-@cli.command()
+@cli.command(short_help="Searches in the user's library.")
 @click.option(
     "--ignore-case",
     "-i",

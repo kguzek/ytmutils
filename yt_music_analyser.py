@@ -1,6 +1,7 @@
 """Module containing the API wrapper for YouTube Music."""
 
 import json
+import time
 from types import SimpleNamespace
 
 import click
@@ -10,7 +11,11 @@ from ytmusicapi import YTMusic
 def serialise_song(song: dict) -> str:
     """Serialises the song to a more human-readable format."""
     artist_names = ", ".join(artist["name"] for artist in song["artists"])
-    return f"{song.get('prefix', '')}{artist_names} - {song['title']}"
+    artist_names = click.style(artist_names, fg="bright_yellow")
+    prefix = song.get("prefix", "")
+    song_title = click.style(song["title"], fg="bright_cyan")
+    song_album = click.style(song["album"]["name"], fg="bright_magenta")
+    return f"{prefix}{artist_names} - {song_title} ({song_album})"
 
 
 class YTMusicAnalyser:
@@ -64,13 +69,16 @@ class YTMusicAnalyser:
             match True:
                 case match.song_title:
                     prefix = "SONG TITLE"
+                    prefix_colour = "cyan"
                 case match.album_name:
                     prefix = "ALBUM NAME"
+                    prefix_colour = "magenta"
                 case match.artist_names:
-                    prefix = "ARTIST NAME"
+                    prefix = "[CREATORS]"
+                    prefix_colour = "yellow"
                 case _:
                     continue
-            song["prefix"] = f"{prefix}: "
+            song["prefix"] = click.style(prefix, bg=prefix_colour) + click.style(": ")
             results.append(song)
 
         return results
@@ -78,9 +86,12 @@ class YTMusicAnalyser:
     def search(self, search_query: str, ignore_case: bool = False):
         """Performs a search for songs in the user's library."""
         click.echo(f"Searching for '{search_query}'...")
+        start_time_s = time.time()
         results = self._get_search_results(search_query, ignore_case)
+        end_time_s = time.time()
         for song in results:
             click.echo(serialise_song(song))
         num_results = len(results)
-        s = "" if num_results == 1 else "s"
-        click.echo(f"({num_results} result{s})")
+        plurality = "" if num_results == 1 else "s"
+        time_taken = round((end_time_s - start_time_s) * 1000, 3)
+        click.secho(f"{num_results} result{plurality} ({time_taken} ms)", bold=True)
