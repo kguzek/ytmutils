@@ -1,0 +1,6 @@
+# Data files
+*.json
+
+# Python compiled binaries
+__pycache__
+*.pyc
