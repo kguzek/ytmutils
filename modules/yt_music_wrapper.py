@@ -7,15 +7,7 @@ from types import SimpleNamespace
 import click
 from ytmusicapi import YTMusic
 
-
-def serialise_song(song: dict) -> str:
-    """Serialises the song to a more human-readable format."""
-    artist_names = ", ".join(artist["name"] for artist in song["artists"])
-    artist_names = click.style(artist_names, fg="bright_yellow")
-    prefix = song.get("prefix", "")
-    song_title = click.style(song["title"], fg="bright_cyan")
-    song_album = click.style(song["album"]["name"], fg="bright_magenta")
-    return f"{prefix}{artist_names} - {song_title} ({song_album})"
+from modules.util import serialise_song, pluralise
 
 
 class YTMusicAnalyser:
@@ -91,6 +83,20 @@ class YTMusicAnalyser:
 
         return results
 
+    @click.command(short_help="Searches in the user's library.")
+    @click.option(
+        "--ignore-case",
+        "-i",
+        is_flag=True,
+        help="Whether or not the search should be case-insensitive.",
+    )
+    @click.option(
+        "--exclude",
+        "-x",
+        is_flag=True,
+        help="Shows all results except for the matches.",
+    )
+    @click.argument("query")
     def search(
         self, search_query: str, ignore_case: bool = False, exclude: bool = False
     ):
@@ -101,7 +107,7 @@ class YTMusicAnalyser:
         end_time_s = time.time()
         for song in results:
             click.echo(serialise_song(song))
-        num_results = len(results)
-        plurality = "" if num_results == 1 else "s"
         time_taken = round((end_time_s - start_time_s) * 1000, 3)
-        click.secho(f"{num_results} result{plurality} ({time_taken} ms)", bold=True)
+        click.secho(
+            f"{pluralise('results', len(results))} ({time_taken} ms)", bold=True
+        )

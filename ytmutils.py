@@ -7,8 +7,8 @@ import webbrowser
 import click
 from ytmusicapi import YTMusic
 
-from yt_music_analyser import YTMusicAnalyser
-
+from modules.yt_music_wrapper import YTMusicAnalyser
+from modules.util import serialise_song, pluralise
 
 HEADERS_AUTH_FILENAME = "headers_auth.json"
 
@@ -34,20 +34,15 @@ def cli():
     """The base command for YouTube Music library management."""
 
 
-@cli.command(short_help="Searches in the user's library.")
-@click.option(
-    "--ignore-case",
-    "-i",
-    is_flag=True,
-    help="Whether or not the search should be case-insensitive.",
-)
-@click.option(
-    "--exclude", "-x", is_flag=True, help="Shows all results except for the matches."
-)
-@click.argument("query")
-def search(query: str, ignore_case: bool, exclude: bool):
-    """Searches for the given string in all songs within the user's library."""
-    analyser.search(query, ignore_case, exclude)
+cli.add_command(YTMusicAnalyser.search)
+
+
+@cli.command("list", short_help="Lists all songs.")
+def list_songs():
+    """Lists all songs in the user's library."""
+    for song in analyser.songs:
+        click.echo(serialise_song(song))
+    click.echo(pluralise("result", len(analyser.songs)))
 
 
 if __name__ == "__main__":
