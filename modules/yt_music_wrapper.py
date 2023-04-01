@@ -2,12 +2,12 @@
 
 import json
 import time
-from types import SimpleNamespace
+import threading
 
 import click
 from ytmusicapi import YTMusic
 
-from modules.util import serialise_song, pluralise
+from modules import util
 
 
 class YTMusicAnalyser:
@@ -17,97 +17,96 @@ class YTMusicAnalyser:
         if ytmusic is None:
             return
         self.ytmusic = ytmusic
-        self.songs = self._read_all_songs()
+        self._songs = []
+        self._initialise_songs()
 
     def _fetch_all_songs(self) -> list[dict]:
         """Fetches all songs in the user's library and outputs them to `songs.json`."""
         songs = self.ytmusic.get_library_songs(limit=None)
-        click.echo(songs)
         with open("songs.json", "w", encoding="utf-8") as file:
             json.dump(songs, file, indent=2, ensure_ascii=False)
         return songs
 
-    def _read_all_songs(self) -> list[dict]:
-        """Reads the user's library or makes a request to retrieve it."""
+    def _initialise_songs(self) -> None:
+        """Sets the `songs` property to the library cache if it exists, else fetches from API."""
         try:
             with open("songs.json", "r", encoding="utf-8") as file:
-                songs = json.load(file)
+                self._songs = json.load(file)
         except FileNotFoundError:
-            songs = self._fetch_all_songs()
-        return songs
+            self.update_cache()
 
     def _get_search_results(
-        self, search_query: str, ignore_case: bool, exclude: bool
-    ) -> list[bool]:
+        self, songs: list[dict], search_query: str, ignore_case: bool, exclude: bool
+    ) -> list[dict]:
         """Goes through the user's songs and matches the search query with multiple properties."""
 
-        if ignore_case:
-            search_query = search_query.lower()
+        query = search_query.lower() if ignore_case else search_query
 
         def test_search_match(song_property: str) -> bool:
             if ignore_case:
                 song_property = song_property.lower()
 
-            return search_query in song_property
+            return query in song_property
 
-        results = []
-
-        for song in self.songs:
-            match = SimpleNamespace(
-                song_title=test_search_match(song["title"]),
-                album_name=test_search_match(song["album"]["name"]),
-                artist_names=any(
+        def check_song_match(song: dict) -> bool:
+            """Returns a boolean indicating whether or not the song matches the search criteria."""
+            song_matched = (
+                test_search_match(song["title"])
+                or test_search_match(song["album"]["name"])
+                or any(
                     (test_search_match(artist["name"]) for artist in song["artists"])
-                ),
+                )
             )
+            return not song_matched if exclude else song_matched
 
-            if exclude:
-                if not (match.song_title or match.album_name or match.artist_names):
-                    results.append(song)
-                continue
+        click.echo(f"Searching for '{search_query}'...")
 
-            match True:
-                case match.song_title:
-                    prefix = "SONG TITLE"
-                    prefix_colour = "cyan"
-                case match.album_name:
-                    prefix = "ALBUM NAME"
-                    prefix_colour = "magenta"
-                case match.artist_names:
-                    prefix = "[CREATORS]"
-                    prefix_colour = "yellow"
-                case _:
-                    continue
-            song["prefix"] = click.style(prefix, bg=prefix_colour) + click.style(": ")
-            results.append(song)
-
+        results = filter(check_song_match, songs)
         return results
 
-    @click.command(short_help="Searches in the user's library.")
-    @click.option(
-        "--ignore-case",
-        "-i",
-        is_flag=True,
-        help="Whether or not the search should be case-insensitive.",
-    )
-    @click.option(
-        "--exclude",
-        "-x",
-        is_flag=True,
-        help="Shows all results except for the matches.",
-    )
-    @click.argument("query")
-    def search(
-        self, search_query: str, ignore_case: bool = False, exclude: bool = False
-    ):
+    def get_songs(self, update_cache: bool) -> list[dict]:
+        """Returns the user's library. Can optionally force to update it from the API."""
+        if update_cache:
+            self.update_cache()
+        return self._songs
+
+    def search(self, update_cache: bool, **kwargs) -> None:
         """Performs a search for songs in the user's library."""
-        click.echo(f"Searching for '{search_query}'...")
-        start_time_s = time.time()
-        results = self._get_search_results(search_query, ignore_case, exclude)
-        end_time_s = time.time()
-        for song in results:
-            click.echo(serialise_song(song))
-        time_taken = round((end_time_s - start_time_s) * 1000, 3)
-        click.secho(
-            f"{pluralise('results', len(results))} ({time_taken} ms)", bold=True
+
+        songs = self.get_songs(update_cache)
+        results, time_taken = util.time_function(
+            lambda: self._get_search_results(songs, **kwargs)
         )
+        num_results = 0
+        for song in results:
+            num_results += 1
+            click.echo(util.serialise_song(song))
+        click.secho(
+            f'{util.pluralise("result", num_results)} ({round(time_taken, 4)} ms)',
+            bold=True,
+        )
+
+    def update_cache(self) -> None:
+        """Forces the instance to update the library song cache."""
+
+        with click.progressbar(
+            length=100, label="Updating the library cache..."
+        ) as prg:
+
+            fetch_complete = False
+
+            def increment_progress_bar():
+                """Increments the progress bar until it's complete."""
+                i = 0
+                while not fetch_complete:
+                    i += 1
+                    time.sleep(0.0005 * i)
+                    if i < 100:
+                        prg.update(1)
+                prg.update(100)
+
+            thread = threading.Thread(target=increment_progress_bar)
+            thread.start()
+            self._songs = self._fetch_all_songs()
+            fetch_complete = True
+            thread.join()
