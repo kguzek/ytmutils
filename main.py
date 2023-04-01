@@ -41,10 +41,13 @@ def cli():
     is_flag=True,
     help="Whether or not the search should be case-insensitive.",
 )
+@click.option(
+    "--exclude", "-x", is_flag=True, help="Shows all results except for the matches."
+)
 @click.argument("query")
-def search(query: str, ignore_case: bool):
+def search(query: str, ignore_case: bool, exclude: bool):
     """Searches for the given string in all songs within the user's library."""
-    analyser.search(query, ignore_case)
+    analyser.search(query, ignore_case, exclude)
 
 
 if __name__ == "__main__":

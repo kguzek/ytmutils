@@ -44,7 +44,9 @@ class YTMusicAnalyser:
             songs = self._fetch_all_songs()
         return songs
 
-    def _get_search_results(self, search_query: str, ignore_case: bool) -> list[bool]:
+    def _get_search_results(
+        self, search_query: str, ignore_case: bool, exclude: bool
+    ) -> list[bool]:
         """Goes through the user's songs and matches the search query with multiple properties."""
 
         if ignore_case:
@@ -53,6 +55,7 @@ class YTMusicAnalyser:
         def test_search_match(song_property: str) -> bool:
             if ignore_case:
                 song_property = song_property.lower()
+
             return search_query in song_property
 
         results = []
@@ -65,6 +68,11 @@ class YTMusicAnalyser:
                     (test_search_match(artist["name"]) for artist in song["artists"])
                 ),
             )
+
+            if exclude:
+                if not (match.song_title or match.album_name or match.artist_names):
+                    results.append(song)
+                continue
 
             match True:
                 case match.song_title:
@@ -83,11 +91,13 @@ class YTMusicAnalyser:
 
         return results
 
-    def search(self, search_query: str, ignore_case: bool = False):
+    def search(
+        self, search_query: str, ignore_case: bool = False, exclude: bool = False
+    ):
         """Performs a search for songs in the user's library."""
         click.echo(f"Searching for '{search_query}'...")
         start_time_s = time.time()
-        results = self._get_search_results(search_query, ignore_case)
+        results = self._get_search_results(search_query, ignore_case, exclude)
         end_time_s = time.time()
         for song in results:
             click.echo(serialise_song(song))
