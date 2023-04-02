@@ -4,3 +4,9 @@
 # Python compiled binaries
 __pycache__
 *.pyc
+
+# Environment variable configuration file
+.env
+
+# Song lyrics cache
+lyrics/
