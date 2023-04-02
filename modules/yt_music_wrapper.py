@@ -99,13 +99,28 @@ class YTMusicAnalyser:
             num_results += 1
             click.echo(util.serialise_song(song))
             adjacent_lines_to_skip = 0
+            last_printed_line_no = None
+            all_lines_to_print = []
             for line in lines:
                 if adjacent_lines_to_skip > 0:
                     adjacent_lines_to_skip -= 1
                     continue
-                adjacent_lines_to_skip = lyrics_lib.output_lyrics_preview(
-                    lyrics, line, **kwargs
+                (
+                    lines_to_print,
+                    adjacent_lines_to_skip,
+                    last_printed_line_no,
+                ) = lyrics_lib.output_lyrics_preview(
+                    lyrics.splitlines(),
+                    line,
+                    last_printed_line_no,
+                    all_lines_to_print.pop,
+                    **kwargs,
                 )
+                # all_lines_to_print.append(
+                #     f"{'|'.join(lines_to_print)}\n{should_remove_last_ellipsis}"
+                # )
+                all_lines_to_print.extend(lines_to_print)
+            click.echo("\n".join(all_lines_to_print) + "\n")
         click.secho(
             f'{util.pluralise("result", num_results)} ({round(time_taken, 4)} ms)',
             bold=True,

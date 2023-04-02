@@ -2,9 +2,9 @@
 
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Callable, Optional
 
-import click
+from click import style
 from dotenv import load_dotenv
 import lyricsgenius
 
@@ -19,60 +19,113 @@ ALLOWED_CHARS = "._- ()[]"
 genius = lyricsgenius.Genius()
 
 
+def get_query_index(search_query: str, line_contents: str, ignore_case: bool) -> int:
+    """Determines whether or not the query is present within the current line.
+
+    If so, returns the index of the first character of the search query in the line.
+    Otherwise, returns `-1`.
+    """
+    if ignore_case:
+        search_query = search_query.lower()
+        line_contents = line_contents.lower()
+    try:
+
+        query_start_idx = line_contents.index(search_query)
+    except ValueError:
+        return -1
+    else:
+        return query_start_idx
+
+
 def output_lyrics_preview(
-    lyrics: str, line: int, *, search_query: str, ignore_case: bool, **_
-):
-    """Outputs where in the song's lyrics the search query appears."""
-    lines = lyrics.splitlines()
-    max_line_no_digits = len(str(len(lines)))
+    lines: list[str],
+    line: int,
+    last_printed_line_no: int | None,
+    pop_all_lines_to_print: Callable[[Optional[int]], str],
+    *,
+    search_query: str,
+    ignore_case: bool,
+    **_,
+) -> tuple[list[str], int, int, bool]:
+    """Analyses the song lyrics and compiles a user preview highlighting search query occurences.
+
+    Returns the lines to output, the number of conceding search hits to skip processing,
+    the last printed line number, and whether or not the previous block should remove its trailing
+    ellipsis.
+    """
+    num_lines = len(lines)
+    max_line_no_digits = len(str(num_lines))
     lines_to_print = []
 
-    query = search_query.lower() if ignore_case else search_query
+    def validate_offset(test_offset: int):
+        return 0 <= line + test_offset <= num_lines - 1
 
-    def stylise_line(line_contents: str, line_offest: int = 0):
-        line_no = str(line + line_offest + 1).rjust(max_line_no_digits, " ")
-        contents = line_contents.lower() if ignore_case else line_contents
-        try:
-            query_start_idx = contents.index(query)
-        except ValueError:
-            contents = line_contents
-            return False
-        else:
+    def stylise_line(line_contents: str, line_offset: int = 0):
+        line_no = str(line + line_offset + 1).rjust(max_line_no_digits, " ")
+        query_start_idx = get_query_index(search_query, line_contents, ignore_case)
+
+        def push_current_line(contents: str = line_contents):
+            lines_to_print.append(f"{line_no} | {contents}")
+
+        line_contains_query = query_start_idx != -1
+        if line_contains_query:
             query_end_idx = query_start_idx + len(search_query)
             capitalised_search_query = line_contents[query_start_idx:query_end_idx]
             contents = (
                 line_contents[:query_start_idx]
-                + click.style(capitalised_search_query, fg="bright_green")
+                + style(capitalised_search_query, fg="bright_green")
                 + line_contents[query_end_idx:]
             )
-            return True
-        finally:
-            lines_to_print.append(f"{line_no} | {contents}")
+            push_current_line(contents)
+        else:
+            push_current_line()
+        return line_contains_query
 
     def push_adjacent_lines(increment: Literal[1, -1]) -> None:
         offset = increment
         break_on_next_iteration = False
         adjacent_lines_to_skip = 0
-        while 0 <= line + offset <= len(lines) - 1:
+
+        def push_ellipsis(current_offset: int):
+            nonlocal last_printed_line_no
+            last_printed_line_no = line + current_offset
+            lines_to_print.append("...")
+
+        while validate_offset(offset):
             if break_on_next_iteration:
-                lines_to_print.append("...")
+                if last_printed_line_no is None:
+                    push_ellipsis(offset)
+                else:
+                    match abs(last_printed_line_no - (line + offset - increment)):
+                        case 0:
+                            # There is a 0-line difference between query-containing lyrics segments
+                            pop_all_lines_to_print()
+                        case 1:
+                            pass
+                        case _:
+                            push_ellipsis(offset)
                 break
+
             current_line = lines[line + offset]
             line_contains_query = stylise_line(current_line, offset)
+            offset += increment
             if line_contains_query:
                 adjacent_lines_to_skip += 1
-            elif current_line:
-                # Stop adding lines once we find the first non-empty line
+                continue
+            if not validate_offset(offset):
+                continue
+            next_line = lines[line + offset]
+            search_query_index = get_query_index(search_query, next_line, ignore_case)
+            if search_query_index == -1:
+                # Stop adding lines once the next line doesn't contain the search query.
                 break_on_next_iteration = True
-            offset += increment
         return adjacent_lines_to_skip
 
     push_adjacent_lines(-1)
     lines_to_print.reverse()
     stylise_line(lines[line])
     adjacent_lines_to_skip = push_adjacent_lines(1)
-    click.echo("\n".join(lines_to_print))
-    return adjacent_lines_to_skip
+    return (lines_to_print, adjacent_lines_to_skip, last_printed_line_no)
 
 
 def sanitise_song_title(song_title: str) -> str:
