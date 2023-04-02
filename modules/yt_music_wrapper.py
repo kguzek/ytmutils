@@ -68,13 +68,14 @@ def output_lyrics_preview(
 
     query = search_query.lower() if ignore_case else search_query
 
-    def stylise_line(line_offest: int, line_contents: str):
+    def stylise_line(line_contents: str, line_offest: int = 0):
         line_no = str(line + line_offest + 1).rjust(max_line_no_digits, " ")
         contents = line_contents.lower() if ignore_case else line_contents
         try:
             query_start_idx = contents.index(query)
         except ValueError:
             contents = line_contents
+            return False
         else:
             query_end_idx = query_start_idx + len(search_query)
             contents = (
@@ -82,29 +83,34 @@ def output_lyrics_preview(
                 + click.style(search_query, fg="bright_green")
                 + line_contents[query_end_idx:]
             )
-        lines_to_print.append(f"{line_no} | {contents}")
+            return True
+        finally:
+            lines_to_print.append(f"{line_no} | {contents}")
 
     def push_adjacent_lines(increment: Literal[1, -1]) -> None:
         offset = increment
         break_on_next_iteration = False
-        while line + offset >= 0 and line + offset <= len(lines) - 1:
+        adjacent_lines_to_skip = 0
+        while 0 <= line + offset <= len(lines) - 1:
             if break_on_next_iteration:
                 lines_to_print.append("...")
                 break
             current_line = lines[line + offset]
-            stylise_line(offset, current_line)
-            if current_line:
+            line_contains_query = stylise_line(current_line, offset)
+            if line_contains_query:
+                adjacent_lines_to_skip += 1
+            elif current_line:
                 # Stop adding lines once we find the first non-empty line
                 break_on_next_iteration = True
-                continue
             offset += increment
-        return offset
+        return adjacent_lines_to_skip
 
-    final_offset = push_adjacent_lines(-1)
+    push_adjacent_lines(-1)
     lines_to_print.reverse()
-    stylise_line(0, lines[line])
-    push_adjacent_lines(1)
+    stylise_line(lines[line])
+    adjacent_lines_to_skip = push_adjacent_lines(1)
     click.echo("\n".join(lines_to_print))
+    return adjacent_lines_to_skip
 
 
 class YTMusicAnalyser:
@@ -149,8 +155,12 @@ class YTMusicAnalyser:
         for song, lyrics, lines in results:
             num_results += 1
             click.echo(util.serialise_song(song))
+            adjacent_lines_to_skip = 0
             for line in lines:
-                output_lyrics_preview(lyrics, line, **kwargs)
+                if adjacent_lines_to_skip > 0:
+                    adjacent_lines_to_skip -= 1
+                    continue
+                adjacent_lines_to_skip = output_lyrics_preview(lyrics, line, **kwargs)
         click.secho(
             f'{util.pluralise("result", num_results)} ({round(time_taken, 4)} ms)',
             bold=True,
