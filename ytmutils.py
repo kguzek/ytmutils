@@ -56,6 +56,12 @@ def cli():
     is_flag=True,
     help="Shows all results except for the matches.",
 )
+@click.option(
+    "--show-lyrics",
+    "-l",
+    is_flag=True,
+    help="Additionally outputs the passages where the search query matched.",
+)
 @update_cache_option
 @click.argument("search_query", nargs=-1)
 # pylint: disable=missing-function-docstring

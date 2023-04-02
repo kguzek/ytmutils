@@ -11,14 +11,43 @@ from ytmusicapi import YTMusic
 from modules import util, lyrics as lyrics_lib
 
 
+def _output_lyrics_preview(
+    lyrics: list[str], lines: list[int], kwargs: dict[str, any]
+) -> None:
+    """Prints the lyrics preview for each match of the search query."""
+    adjacent_lines_to_skip = 0
+    last_printed_line_no = None
+    all_lines_to_print = []
+    for line in lines:
+        if adjacent_lines_to_skip > 0:
+            adjacent_lines_to_skip -= 1
+            continue
+        (
+            lines_to_print,
+            adjacent_lines_to_skip,
+            last_printed_line_no,
+        ) = lyrics_lib.output_lyrics_preview(
+            lyrics.splitlines(),
+            line,
+            last_printed_line_no,
+            all_lines_to_print.pop,
+            **kwargs,
+        )
+        # all_lines_to_print.append(
+        #     f"{'|'.join(lines_to_print)}\n{should_remove_last_ellipsis}"
+        # )
+        all_lines_to_print.extend(lines_to_print)
+    click.echo("\n".join(all_lines_to_print) + "\n")
+
+
 def _get_search_results(
     songs: list[dict], search_query: str, ignore_case: bool, exclude: bool
-) -> list[tuple[dict, str]]:
+) -> list[tuple[dict, str, list[int]]]:
     """Goes through the user's songs and matches the search query with multiple properties."""
 
     query = search_query.lower() if ignore_case else search_query
 
-    results: list[tuple[dict, str]] = []
+    results: list[tuple[dict, str, list[int]]] = []
     songs_processed = 0
 
     def check_song_match(song: dict) -> bool:
@@ -87,7 +116,7 @@ class YTMusicAnalyser:
             self.update_cache()
         return self._songs
 
-    def search(self, update_cache: bool, **kwargs) -> None:
+    def search(self, update_cache: bool, show_lyrics: bool, **kwargs) -> None:
         """Performs a search for songs in the user's library."""
 
         songs = self.get_songs(update_cache)
@@ -97,30 +126,13 @@ class YTMusicAnalyser:
         num_results = 0
         for song, lyrics, lines in results:
             num_results += 1
-            click.echo(util.serialise_song(song))
-            adjacent_lines_to_skip = 0
-            last_printed_line_no = None
-            all_lines_to_print = []
-            for line in lines:
-                if adjacent_lines_to_skip > 0:
-                    adjacent_lines_to_skip -= 1
-                    continue
-                (
-                    lines_to_print,
-                    adjacent_lines_to_skip,
-                    last_printed_line_no,
-                ) = lyrics_lib.output_lyrics_preview(
-                    lyrics.splitlines(),
-                    line,
-                    last_printed_line_no,
-                    all_lines_to_print.pop,
-                    **kwargs,
-                )
-                # all_lines_to_print.append(
-                #     f"{'|'.join(lines_to_print)}\n{should_remove_last_ellipsis}"
-                # )
-                all_lines_to_print.extend(lines_to_print)
-            click.echo("\n".join(all_lines_to_print) + "\n")
+            song_serialised = util.serialise_song(song)
+            if not show_lyrics:
+                num_occurences = util.pluralise("occurence", len(lines))
+                click.echo(f"{song_serialised} ({num_occurences})")
+                continue
+            click.echo(song_serialised)
+            _output_lyrics_preview(lyrics, lines, kwargs)
         click.secho(
             f'{util.pluralise("result", num_results)} ({round(time_taken, 4)} ms)',
             bold=True,

@@ -41,7 +41,7 @@ def output_lyrics_preview(
     lines: list[str],
     line: int,
     last_printed_line_no: int | None,
-    pop_all_lines_to_print: Callable[[Optional[int]], str],
+    pop_last_printed_line: Callable[[Optional[int]], str],
     *,
     search_query: str,
     ignore_case: bool,
@@ -81,31 +81,16 @@ def output_lyrics_preview(
             push_current_line()
         return line_contains_query
 
+    def push_ellipsis(current_offset: int):
+        nonlocal last_printed_line_no
+        last_printed_line_no = line + current_offset
+        lines_to_print.append("...")
+
     def push_adjacent_lines(increment: Literal[1, -1]) -> None:
         offset = increment
-        break_on_next_iteration = False
         adjacent_lines_to_skip = 0
 
-        def push_ellipsis(current_offset: int):
-            nonlocal last_printed_line_no
-            last_printed_line_no = line + current_offset
-            lines_to_print.append("...")
-
         while validate_offset(offset):
-            if break_on_next_iteration:
-                if last_printed_line_no is None:
-                    push_ellipsis(offset)
-                else:
-                    match abs(last_printed_line_no - (line + offset - increment)):
-                        case 0:
-                            # There is a 0-line difference between query-containing lyrics segments
-                            pop_all_lines_to_print()
-                        case 1:
-                            pass
-                        case _:
-                            push_ellipsis(offset)
-                break
-
             current_line = lines[line + offset]
             line_contains_query = stylise_line(current_line, offset)
             offset += increment
@@ -116,9 +101,25 @@ def output_lyrics_preview(
                 continue
             next_line = lines[line + offset]
             search_query_index = get_query_index(search_query, next_line, ignore_case)
-            if search_query_index == -1:
-                # Stop adding lines once the next line doesn't contain the search query.
-                break_on_next_iteration = True
+            if search_query_index != -1:
+                continue
+            # Stop adding lines once the next line doesn't contain the search query.
+            if last_printed_line_no is None:
+                push_ellipsis(offset)
+                break
+            # Ensure the number of ellipses is correct.
+            match abs(last_printed_line_no - (line + offset - increment)):
+                case 0:
+                    # There is a 0-line difference between query-containing lyrics segments.
+                    # Remove the last line, which is an ellipsis ("...").
+                    pop_last_printed_line()
+                case 1:
+                    # Don't add another ellipsis if there is only one line in between.
+                    pass
+                case _:
+                    # There is a difference of at least two lines. Add another ellipsis.
+                    push_ellipsis(offset)
+            break
         return adjacent_lines_to_skip
 
     push_adjacent_lines(-1)
