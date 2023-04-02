@@ -2,9 +2,11 @@
 
 import re
 from pathlib import Path
+from typing import Literal
 
-import lyricsgenius
+import click
 from dotenv import load_dotenv
+import lyricsgenius
 
 from modules import util
 
@@ -15,6 +17,62 @@ load_dotenv()
 ALLOWED_CHARS = "._- ()[]"
 
 genius = lyricsgenius.Genius()
+
+
+def output_lyrics_preview(
+    lyrics: str, line: int, *, search_query: str, ignore_case: bool, **_
+):
+    """Outputs where in the song's lyrics the search query appears."""
+    lines = lyrics.splitlines()
+    max_line_no_digits = len(str(len(lines)))
+    lines_to_print = []
+
+    query = search_query.lower() if ignore_case else search_query
+
+    def stylise_line(line_contents: str, line_offest: int = 0):
+        line_no = str(line + line_offest + 1).rjust(max_line_no_digits, " ")
+        contents = line_contents.lower() if ignore_case else line_contents
+        try:
+            query_start_idx = contents.index(query)
+        except ValueError:
+            contents = line_contents
+            return False
+        else:
+            query_end_idx = query_start_idx + len(search_query)
+            capitalised_search_query = line_contents[query_start_idx:query_end_idx]
+            contents = (
+                line_contents[:query_start_idx]
+                + click.style(capitalised_search_query, fg="bright_green")
+                + line_contents[query_end_idx:]
+            )
+            return True
+        finally:
+            lines_to_print.append(f"{line_no} | {contents}")
+
+    def push_adjacent_lines(increment: Literal[1, -1]) -> None:
+        offset = increment
+        break_on_next_iteration = False
+        adjacent_lines_to_skip = 0
+        while 0 <= line + offset <= len(lines) - 1:
+            if break_on_next_iteration:
+                lines_to_print.append("...")
+                break
+            current_line = lines[line + offset]
+            line_contains_query = stylise_line(current_line, offset)
+            if line_contains_query:
+                adjacent_lines_to_skip += 1
+            elif current_line:
+                # Stop adding lines once we find the first non-empty line
+                break_on_next_iteration = True
+            offset += increment
+        return adjacent_lines_to_skip
+
+    push_adjacent_lines(-1)
+    lines_to_print.reverse()
+    stylise_line(lines[line])
+    adjacent_lines_to_skip = push_adjacent_lines(1)
+    click.echo("\n".join(lines_to_print))
+    return adjacent_lines_to_skip
 
 
 def sanitise_song_title(song_title: str) -> str:

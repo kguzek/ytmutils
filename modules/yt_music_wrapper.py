@@ -3,14 +3,12 @@
 import json
 import time
 import threading
-from typing import Literal
 from requests.exceptions import Timeout
 
 import click
 from ytmusicapi import YTMusic
 
-from modules import util
-from modules.lyrics import get_song_lyrics
+from modules import util, lyrics as lyrics_lib
 
 
 def _get_search_results(
@@ -30,7 +28,7 @@ def _get_search_results(
         song_name = song["title"]
         artist_names = ", ".join(artist["name"] for artist in song["artists"])
         try:
-            lyrics = get_song_lyrics(song_name, artist_names)
+            lyrics = lyrics_lib.get_song_lyrics(song_name, artist_names)
         except Timeout:
             click.echo(f"Searching lyrics for '{song_name}' timed out.")
             return None
@@ -56,61 +54,6 @@ def _get_search_results(
     while songs_processed < len(songs):
         continue
     return results
-
-
-def output_lyrics_preview(
-    lyrics: str, line: int, *, search_query: str, ignore_case: bool, **_
-):
-    """Outputs where in the song's lyrics the search query appears."""
-    lines = lyrics.splitlines()
-    max_line_no_digits = len(str(len(lines)))
-    lines_to_print = []
-
-    query = search_query.lower() if ignore_case else search_query
-
-    def stylise_line(line_contents: str, line_offest: int = 0):
-        line_no = str(line + line_offest + 1).rjust(max_line_no_digits, " ")
-        contents = line_contents.lower() if ignore_case else line_contents
-        try:
-            query_start_idx = contents.index(query)
-        except ValueError:
-            contents = line_contents
-            return False
-        else:
-            query_end_idx = query_start_idx + len(search_query)
-            contents = (
-                line_contents[:query_start_idx]
-                + click.style(search_query, fg="bright_green")
-                + line_contents[query_end_idx:]
-            )
-            return True
-        finally:
-            lines_to_print.append(f"{line_no} | {contents}")
-
-    def push_adjacent_lines(increment: Literal[1, -1]) -> None:
-        offset = increment
-        break_on_next_iteration = False
-        adjacent_lines_to_skip = 0
-        while 0 <= line + offset <= len(lines) - 1:
-            if break_on_next_iteration:
-                lines_to_print.append("...")
-                break
-            current_line = lines[line + offset]
-            line_contains_query = stylise_line(current_line, offset)
-            if line_contains_query:
-                adjacent_lines_to_skip += 1
-            elif current_line:
-                # Stop adding lines once we find the first non-empty line
-                break_on_next_iteration = True
-            offset += increment
-        return adjacent_lines_to_skip
-
-    push_adjacent_lines(-1)
-    lines_to_print.reverse()
-    stylise_line(lines[line])
-    adjacent_lines_to_skip = push_adjacent_lines(1)
-    click.echo("\n".join(lines_to_print))
-    return adjacent_lines_to_skip
 
 
 class YTMusicAnalyser:
@@ -160,7 +103,9 @@ class YTMusicAnalyser:
                 if adjacent_lines_to_skip > 0:
                     adjacent_lines_to_skip -= 1
                     continue
-                adjacent_lines_to_skip = output_lyrics_preview(lyrics, line, **kwargs)
+                adjacent_lines_to_skip = lyrics_lib.output_lyrics_preview(
+                    lyrics, line, **kwargs
+                )
         click.secho(
             f'{util.pluralise("result", num_results)} ({round(time_taken, 4)} ms)',
             bold=True,
