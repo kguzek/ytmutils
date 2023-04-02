@@ -57,10 +57,11 @@ def cli():
     help="Shows all results except for the matches.",
 )
 @update_cache_option
-@click.argument("search_query")
+@click.argument("search_query", nargs=-1)
 # pylint: disable=missing-function-docstring
-def search(**kwargs):
-    analyser.search(**kwargs)
+def search(search_query: tuple[str], **kwargs):
+    query = " ".join(search_query)
+    analyser.search(search_query=query, **kwargs)
 
 
 @cli.command("list", short_help="Lists all songs.")
