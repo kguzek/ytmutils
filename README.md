@@ -34,7 +34,7 @@ python ytmutils.py [command] <args>
 On your first invocation of YTMUtils, you will be prompted to paste your request headers and the YouTube Music webpage should open in a new tab in your default browser. This is in order for the program to connect to the YouTube Music API as you, instead of having to log in every time.
 
 You must open the developer console, find a request to an endpoint looking like `https://music.youtube.com/youtubei/v1/browse`, and copy its request headers. Then, return to the terminal and follow the instructions.
-For more information, refer to the [YouTube Music API documentation](https://ytmusicapi.readthedocs.io/en/stable/setup.html).
+For more information, refer to the [YouTube Music API documentation](https://ytmusicapi.readthedocs.io/en/stable/setup/index.html).
 
 ## Commands
 
